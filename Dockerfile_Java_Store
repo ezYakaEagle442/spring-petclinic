@@ -1,73 +1,82 @@
-# Multi-Stage pipeline: docker build --no-cache -t "petclinic-zulu11" -f ".\Dockerfile_Java_Store" .
+# Multi-Stage pipeline: docker build --build-arg STORE_TYPE=pkcs12 --build-arg SYS_STOREPASS=nopass --build-arg NEW_STOREPASS=secretpass --build-arg DN="CN=mybigcompany.com,OU=IT,O=mybigcompany.com,L=Paris,ST=IDF,C=FR,emailAddress=DevOps-KissMyApp@groland.grd" --build-arg SAN="mybigcompany.com" --no-cache -t "petclinic-zulu11" -f "Dockerfile_Java_Store" .
 
 # BUILD
 # WARNING: Image "mcr.microsoft.com/java/maven:11u7-zulu-debian10" runs as the 'root' user which may not be permitted by your cluster administrator
 FROM mcr.microsoft.com/java/maven:11u7-zulu-debian10 AS build
 MAINTAINER pinpin <noname@microsoft.com>
 LABEL Description="PetClinic Java Spring Boot App. built from Zulu 11, running TLS with a Java KeyStore created with a dummy fake Self-Signed certificate."
-RUN mkdir /app
-WORKDIR /app
-COPY . /app
+
+ARG STORE_TYPE=pkcs12
+ARG SYS_STOREPASS=changeit
+ARG NEW_STOREPASS="KEY_KiP@ss101!"
+
+ARG SAN="fake-cert-to-delete-mycompany.com"
+ARG DN="CN=${SAN},OU=IT,O=MyCompany,L=Paris,ST=IDF,C=FR,emailAddress=no-reply@groland.grd"
+
+RUN echo "ARG STORE_TYPE " $STORE_TYPE
+RUN echo "ARG SYS_STOREPASS " $SYS_STOREPASS
+RUN echo "ARG NEW_STOREPASS " $NEW_STOREPASS
+RUN echo "ARG SAN " $SAN
+RUN echo "ARG DN " $DN
+
+RUN mkdir /tmp/app
+WORKDIR /tmp/app
+COPY . /tmp/app
 
 RUN java -version
 RUN cat /usr/lib/jvm/zulu-11-azure-amd64/conf/security/java.security | grep -i "keystore.type"
 RUN ls -al /usr/lib/jvm/zulu-11-azure-amd64/lib/security/cacerts
 
-RUN USERNAME=`whoami`
-RUN echo "USERNAME : " $USERNAME
-RUN HOSTNAME=`hostname`
-RUN echo "HOSTNAME : " $HOSTNAME
-
-RUN STORE_TYPE=pkcs12
-RUN SYS_STOREPASS=changeit
+# RUN USERNAME=`whoami`
+# RUN echo "USERNAME : " $USERNAME
+# RUN HOSTNAME=`hostname`
+# RUN echo "HOSTNAME : " $HOSTNAME
 
 # Modify KeyStore default password
-RUN echo "KEY_KiP@ss101!" > store-pass.txt
-RUN echo "prv8KIP@ss777" > key-pass.txt
-RUN SYS_STOREPASS_NEW=`cat store-pass.txt`
+RUN echo $NEW_STOREPASS > store-pass.txt
+# RUN echo "prv8KIP@ss777" > key-pass.txt
+# RUN SYS_STOREPASS_NEW=`cat store-pass.txt`
+# RUN echo "SYS_STOREPASS_NEW =  " $SYS_STOREPASS_NEW
 
-RUN TRUSTED_CA=cacerts
-RUN TRUSTED_SITE_CA=jssecacerts
-RUN TRUSTED_CERT=trusted.certs
-RUN TRUSTED_SITE_CERT=trusted.jssecerts
-RUN CLIENT_AUTH_CERT=trusted.clientcerts
+# ARG TRUSTED_CA=cacerts
+# ARG TRUSTED_SITE_CA=jssecacerts
+# ARG TRUSTED_CERT=trusted.certs
+# ARG TRUSTED_SITE_CERT=trusted.jssecerts
+# ARG CLIENT_AUTH_CERT=trusted.clientcerts
 
-# RUN mkdir tmp
-RUN SAN="fake-cert-to-delete-mycompany.com"
-RUN DN="CN=${SAN},OU=IT,O=MyCompany,L=Paris,ST=IDF,C=FR,emailAddress=no-reply@groland.grd"
-RUN keytool -genkeypair -alias fake-cert-to-delete -keystore empty-TrustStore.p12 -dname $DN -ext SAN=dns:$SAN -storepass $SYS_STOREPASS -keypass $SYS_STOREPASS -storetype $STORE_TYPE -keyalg RSA -keysize 2048 -validity 1 -v 
-RUN keytool -delete -alias fake-cert-to-delete -keystore empty-TrustStore.p12 -storepass $SYS_STOREPASS
-RUN keytool -storepasswd -storepass $SYS_STOREPASS -new $SYS_STOREPASS_NEW -keystore empty-TrustStore.p12 -storetype $STORE_TYPE -v
-RUN keytool -list -keystore empty-TrustStore.p12 -storepass:file store-pass.txt -J-Duser.language=en -v
+# RUN keytool -genkeypair -alias fake-cert-to-delete -keystore empty-TrustStore.p12 -dname $DN -ext SAN=dns:$SAN -storepass $SYS_STOREPASS-storetype $STORE_TYPE -keyalg RSA -keysize 2048 -validity 1 -v 
+# RUN keytool -delete -alias fake-cert-to-delete -keystore empty-TrustStore.p12 -storepass $SYS_STOREPASS
+# RUN keytool -storepasswd -storepass $SYS_STOREPASS -new $SYS_STOREPASS_NEW -keystore empty-TrustStore.p12 -storetype $STORE_TYPE -v
+# RUN keytool -list -keystore empty-TrustStore.p12 -storepass:file store-pass.txt -J-Duser.language=en -v
 
-RUN keytool -genkeypair -dname "CN=mycompany.com,OU=IT,O=mycompany.com,L=Paris,ST=IDF,C=FR,emailAddress=DevOps-KissMyApp@groland.grd" -ext SAN=dns:mycompany.com -keyalg RSA -keysize 2048 -validity 1095 -alias oss-java-web-app  -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -keypass:file key-pass.txt -v 
+RUN keytool -genkeypair -dname $DN -ext SAN=dns:$SAN -keyalg RSA -keysize 2048 -validity 1095 -alias oss-java-web-app -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -storetype $STORE_TYPE -v 
 # keytool -genkeypair -dname "CN=John DOE,OU=IT,O=mycompany.com,STREET=1 London Street,L=777 London,ST=BK,C=UK,T=M,SURNAME=DOE,GIVENNAME=John,INITIALS=J.D,IP=MyIP,emailAddress=john.doe@mycompany.com" -keyalg RSA -keysize 2048 -validity 1095 -alias user-cert  -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -keypass:file key-pass.txt -v 
-RUN keytool -list -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -J-Duser.language=en -v -J-Duser.language=en
-RUN keytool -certreq -keyalg RSA -alias oss-java-web-app -keysize 2048 -file oss-java-web-app.csr -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -keypass:file key-pass.txt -v
-RUN openssl req -in oss-java-web-app.csr -noout -text
-RUN keytool -J-Duser.language=en -gencert -infile oss-java-web-app.csr -outfile oss-java-web-app.cer -alias oss-java-web-app -validity 1095 -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -storetype $STORE_TYPE -keypass:file key-pass.txt -v
+RUN keytool -list -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -J-Duser.language=en -v
+RUN keytool -certreq -keyalg RSA -alias oss-java-web-app -keysize 2048 -file oss-java-web-app.csr -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -v
+# RUN openssl req -in oss-java-web-app.csr -noout -text
+RUN keytool -gencert -infile oss-java-web-app.csr -outfile oss-java-web-app.cer -alias oss-java-web-app -validity 1095 -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -J-Duser.language=en 
 
 # https://www.sslshopper.com/ssl-converter.html
 # RUN openssl x509 -outform pem -in oss-java-web-app.cer -out oss-java-web-app.pem
 
-RUN keytool -J-Duser.language=en -importcert -file oss-java-web-app.cer -alias oss-java-web-app -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -storetype $STORE_TYPE -noprompt -v
-# keytool -J-Duser.language=en -keystore $SYS_TRUSTED_CA -storepass:file store-pass.txt -storetype $STORE_TYPE -importcert -file ../Certificates/MyCompany/Corporate-PKI/RootCA.cer -alias root-ca -noprompt -v
-# keytool -J-Duser.language=en -keystore $SYS_TRUSTED_CA -storepass:file store-pass.txt -storetype $STORE_TYPE -importcert -file ../Certificates/MyCompany/Corporate-PKI/IssuingCA.cer -alias issuing-ca -noprompt -v
+RUN keytool -J-Duser.language=en -importcert -file oss-java-web-app.cer -alias oss-java-web-app -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -storetype $STORE_TYPE -noprompt
+# keytool -J-Duser.language=en -keystore $SYS_TRUSTED_CA -storepass:file store-pass.txt -storetype $STORE_TYPE -importcert -file ../Certificates/MyCompany/Corporate-PKI/RootCA.cer -alias root-ca -noprompt
+# keytool -J-Duser.language=en -keystore $SYS_TRUSTED_CA -storepass:file store-pass.txt -storetype $STORE_TYPE -importcert -file ../Certificates/MyCompany/Corporate-PKI/IssuingCA.cer -alias issuing-ca -noprompt
 RUN keytool -list -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -J-Duser.language=en -v
 RUN keytool -exportcert -alias oss-java-web-app -file oss-java-web-app.der -rfc -keystore oss-java-web-app.p12 -storepass:file store-pass.txt -J-Duser.language=en
 # https://www.sslshopper.com/certificate-decoder.html : openssl x509 -in oss-java-web-app.der -text -noout
 
 # Copy Java KeyStore to ClassPath
-RUN mv /app/oss-java-web-app.p12 /app/spring-petclinic/src/main/resources
+RUN mv oss-java-web-app.p12 src/main/resources
 RUN mvn -version
 RUN mvn clean spring-javaformat:apply 
 RUN mvn package -DskipTests
-RUN ls /app
+RUN ls target
 
 # Lightweight image returned as final product
 FROM mcr.microsoft.com/java/jre:11u6-zulu-alpine
 VOLUME /tmp
-COPY --from=build /app/target/spring-petclinic-2.3.0.BUILD-SNAPSHOT.jar app.jar
+COPY --from=build /tmp/app/target/spring-petclinic-2.3.0.BUILD-SNAPSHOT.jar app.jar
 RUN touch /app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app.jar"]
